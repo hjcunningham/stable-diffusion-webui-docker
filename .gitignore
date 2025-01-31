@@ -4,3 +4,9 @@
 # VSCode specific
 *.code-workspace
 /.vscode
+
+# Jetbrains IDEs
+/.idea
+
+# Python
+/venv
