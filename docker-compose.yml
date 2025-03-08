@@ -1,11 +1,15 @@
 x-base_service: &base_service
-    ports:
-      - "${WEBUI_PORT:-7860}:7860"
+    expose:
+      - "7860"  # Backend will be exposed to NGINX proxy, but not the host.
+    networks:
+      - private
     volumes:
-      - &v1 ./data:/data
-      - &v2 ./output:/output
+      - &data ./data:/data
+      - &output ./output:/output
     stop_signal: SIGKILL
     tty: true
+    depends_on:
+      - proxy
     deploy:
       resources:
         reservations:
@@ -17,15 +21,29 @@ x-base_service: &base_service
 name: webui-docker
 
 services:
+  proxy:
+    image: nginx:1.27.4-bookworm-perl
+    ports:
+      - "${WEBUI_PORT:-8080}:8080"
+    volumes:
+      - ./config/nginx/proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: always
+    networks:
+      - public
+      - private
+
   download:
     build: ./services/download/
     profiles: ["download"]
+    networks:
+      - public
     volumes:
-      - *v1
+      - *data
 
   auto: &automatic
     <<: *base_service
-    profiles: ["auto"]
+    container_name: auto
+#    profiles: ["auto"]
     build: ./services/AUTOMATIC1111
     image: sd-auto:78
     environment:
@@ -46,10 +64,24 @@ services:
     environment:
       - CLI_ARGS=
 
-
   comfy-cpu:
     <<: *comfy
     profiles: ["comfy-cpu"]
     deploy: {}
     environment:
       - CLI_ARGS=--cpu
+
+networks:
+  public:
+    driver: bridge
+    # Setting this to "true" will constrain the SD UI applications to an
+    #   internal network, restricting user access to the NGINX reverse proxy and
+    #   ensuring that any AI does not have direct access to the open Internet.
+    #
+    #  This is set to "false" by default, as there are many functions this will
+    #  undoubtedly break, but keeping Skynet inside a box will ease the minds of
+    #  more paranoid users.
+    internal: false
+  private:
+    driver: bridge
+    internal: false
